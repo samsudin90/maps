@@ -8,27 +8,59 @@ import {
 } from "react-leaflet"
 import { EditControl } from "react-leaflet-draw"
 import { useState, useRef } from "react"
+import * as turf from "@turf/turf"
 
 export function Leaflet() {
   const [polygons, setPolygons] = useState([])
   const featureGroupRef = useRef()
 
   const handleCreate = (e) => {
-    const layer = e.layer
+    const layer = e.layer;
 
-    // ambil koordinat polygon
-    const latlngs = layer.getLatLngs()
+    const latlngs = layer.getLatLngs()[0];
+    const newCoords = latlngs.map(p => [p.lng, p.lat]);
+    newCoords.push(newCoords[0]);
 
-    const newPolygon = {
-      id: Date.now(),
-      coords: latlngs,
-      color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+    const newPolygonTurf = turf.polygon([newCoords]);
+
+    let isValid = true;
+
+    for (let poly of polygons) {
+      const exCoords = poly.coords[0].map(p => [p.lng, p.lat]);
+      exCoords.push(exCoords[0]);
+
+      const existingPolygonTurf = turf.polygon([exCoords]);
+
+      const isInvalid =
+        turf.booleanOverlap(newPolygonTurf, existingPolygonTurf) ||
+        turf.booleanWithin(newPolygonTurf, existingPolygonTurf) ||
+        turf.booleanContains(existingPolygonTurf, newPolygonTurf) ||
+        turf.booleanTouches(newPolygonTurf, existingPolygonTurf);
+
+      if (isInvalid) {
+        isValid = false;
+        break;
+      }
     }
 
-    setPolygons((prev) => [...prev, newPolygon])
+    if (!isValid) {
+      alert("❌ Polygon tidak boleh berpotongan!");
 
-    console.log("Polygon:", latlngs)
-  }
+      // 🔥 ini penting banget
+      layer.remove(); // paksa hapus dari map
+
+      return;
+    }
+
+    // baru simpan
+    const newPolygon = {
+      id: Date.now(),
+      coords: layer.getLatLngs(),
+      color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+    };
+
+    setPolygons((prev) => [...prev, newPolygon]);
+  };
 
   return (
     <div style={{ height: "92vh" }}>
